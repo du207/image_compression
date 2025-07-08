@@ -1,5 +1,6 @@
 #include "test.h"
 
+#include "bitrw.h"
 #include "dct.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -59,4 +60,21 @@ void dct_test() {
         }
         printf("\n");
     }
+}
+
+void bit_write_test() {
+    FILE* fp = fopen("./build/test", "w");
+
+    BitWriter* bw = create_bit_writer(fp);
+    bit_write(bw, 0b110, 3);
+    bit_write(bw, 0b100101, 6);
+    bit_write(bw, 0b101, 3);
+    bit_write(bw, 0b10, 2);
+    bit_write(bw, 0b10110110, 8);
+    bit_write(bw, 0b01, 2);
+    bit_write(bw, 0b0010011, 7);
+    bit_writer_flush(bw);
+
+    // 11010010110110101101100100100110
+    // 11010010110110101101100100100110
 }

@@ -27,7 +27,7 @@ typedef struct {
     Chunk* chunks; // Chunk array
 } PreEncoding;
 
-PreEncoding* create_pre_encoding(int width, int height);
+PreEncoding* create_pre_encoding(int c_width, int c_height);
 void destroy_pre_encoding(PreEncoding* pe);
 
 // 'in_' means 'inverse'

@@ -7,11 +7,11 @@
 #include <stdlib.h>
 
 
-PreEncoding* create_pre_encoding(int width, int height) {
+PreEncoding* create_pre_encoding(int c_width, int c_height) {
     PreEncoding* pe = (PreEncoding*) malloc(sizeof(PreEncoding));
-    pe->c_width = width;
-    pe->c_height = height;
-    pe->chunks = (Chunk*) malloc(sizeof(Chunk) * width * height);
+    pe->c_width = c_width;
+    pe->c_height = c_height;
+    pe->chunks = (Chunk*) malloc(sizeof(Chunk) * c_width * c_height);
     return pe;
 }
 

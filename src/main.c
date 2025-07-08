@@ -3,12 +3,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "awi.h"
+#include "bitrw.h"
+#include "bmp.h"
 #include "color.h"
 #include "dct.h"
 #include "rle.h"
 #include "test.h"
+#include "utils.h"
 
 int convert_bmp_to_awi(char* filename);
+int revert_awi_to_bmp(char* filename);
 
 
 int main (int argc, char** argv) {
@@ -37,6 +42,8 @@ int main (int argc, char** argv) {
             return 1;
         }
 
+        err_code = revert_awi_to_bmp(filename);
+        if (err_code < 0) goto error_handle;
     } else if (strcmp(task, "show") == 0) {
         if (filename == NULL) {
             printf(".awi image file name required!\n");
@@ -63,7 +70,7 @@ error_handle:
         printf("File reading/writing error!\n");
         return 1;
     case -2:
-        printf("Not valid BMP file format!\n");
+        printf("Invalid file format!\n");
         return 2;
     default:
         printf("Unknown error!\n");
@@ -73,91 +80,151 @@ error_handle:
 
 
 int convert_bmp_to_awi(char* filename) {
+    if (!is_end_with(filename, ".bmp")) return -2;
+
     // 1. Read bmp file
     FILE* fp = fopen(filename, "rb");
     if (fp == NULL) return -1;
 
-    uint8_t header[54];
-    if (fread(header, 1, 54, fp) != 54) {
+    int width, height;
+    RGBImage* rgb_image = read_bmp_file(fp, &width, &height);
+    if (rgb_image == NULL) {
         fclose(fp);
         return -2;
     }
 
-    int width = *(int *) &header[18]; // 4bytes
-    int height = *(int *) &header[22]; // 4bytes
-
-    int bits_per_pixel = 24; // 24bit bmp file
-    int pixel_byte = bits_per_pixel / 8;
-    int row_size = ((bits_per_pixel * width + 31) / 32) * 4; // bmp file has padding
-
-    // 2. Read rgb pixels
-    RGBImage* rgb_image = create_rgb_image(width, height);
-
-    uint8_t* row_buffer = (uint8_t*) malloc(row_size);
-    int buf_idx, y_idx;
-
-    for (int y = 0; y < height; y++) {
-        if (fread(row_buffer, 1, row_size, fp) != row_size) {
-            free(row_buffer);
-            fclose(fp);
-            return -2;
-        }
-
-        for (int x = 0; x < width; x++) {
-            buf_idx = x * pixel_byte;
-            y_idx = height - 1 - y; // BMP file is formated in reverse (wtf)
-
-            rgb_image->r->p[y_idx][x] = row_buffer[buf_idx + 2]; // R
-            rgb_image->g->p[y_idx][x] = row_buffer[buf_idx + 1]; // G
-            rgb_image->b->p[y_idx][x] = row_buffer[buf_idx + 0]; // B
-        }
-    }
-
-    free(row_buffer);
     fclose(fp);
 
-    // 3. Convert to YCbCr and subsampling
+    // 2. Convert to YCbCr and subsampling
     YCbCrImage* ycbcr_image = rgb_image_to_ycbcr(rgb_image);
     destroy_rgb_image(rgb_image); // rgb now useless
 
     YCbCrImage* sampled_image = ycbcr_420_sampling(ycbcr_image);
+    destroy_ycbcr_image(ycbcr_image); // ycbcr now useless
 
-    // dct_test();
-
-    // 4. DCT transform
-    // int* y_dct = dct_channel(sampled_image->Y_plane, sampled_image->width, sampled_image->height);
-    PreEncoding* pe = dct_channel(sampled_image->y, QM_LUMA);
-
-    rle_encode(pe);
-
+    // 3. DCT transform
+    PreEncoding* pe_y = dct_channel(sampled_image->y, QM_LUMA);
+    PreEncoding* pe_cb = dct_channel(sampled_image->cb, QM_CHROM);
+    PreEncoding* pe_cr = dct_channel(sampled_image->cr, QM_CHROM);
+    destroy_ycbcr_image(sampled_image); // sampled now useless
 
 
+    // 4. RLE Encode
+    RLEEncoder* re_y = rle_encode(pe_y);
+    destroy_pre_encoding(pe_y);
 
-    // // __TEST__
-    // printf("original channel\n\n");
-    // for (int x = 0; x < sampled_image->y->width; x++) {
-    //     printf("%d ", sampled_image->y->p[100][x]);
-    // }
+    RLEEncoder* re_cb = rle_encode(pe_cb);
+    destroy_pre_encoding(pe_cb);
 
-    // printf("\n\nPreEncoding chunks\n\n");
-    // for (int i = 0; i < 20; i++) {
-    //     for (int j = 0; j < 64; j++) {
-    //         printf("%d ", pe->chunks[i].c[j]);
-    //     }
-    //     printf("\n");
-    // }
+    RLEEncoder* re_cr = rle_encode(pe_cr);
+    destroy_pre_encoding(pe_cr);
 
-    // Channel* in_c = in_dct_channel(pe, width, height, QM_LUMA);
-    // printf("\n\nin-dct channel\n\n");
-    // for (int x = 0; x < in_c->width; x++) {
-    //     printf("%d ", in_c->p[100][x]);
-    // }
 
-    // destroy_channel(in_c);
-    // // __END_TEST__
 
-    destroy_pre_encoding(pe);
-    destroy_ycbcr_image(sampled_image);
-    destroy_ycbcr_image(ycbcr_image);
+   // 5. Write .awi file
+    char* awi_filename = replace_str_end(filename, ".awi");
+    if (awi_filename == NULL) {
+        destroy_rle_encoder(re_y);
+        destroy_rle_encoder(re_cb);
+        destroy_rle_encoder(re_cr);
+        return -2;
+    }
+
+    FILE* fp_write_awi = fopen(awi_filename, "wb");
+    if (fp_write_awi == NULL) {
+        destroy_rle_encoder(re_y);
+        destroy_rle_encoder(re_cb);
+        destroy_rle_encoder(re_cr);
+        return -1;
+    }
+
+    BitWriter* bw = create_bit_writer(fp);
+
+    write_awi_file(bw, re_y, re_cb, re_cr, width, height);
+
+    destroy_rle_encoder(re_y);
+    destroy_rle_encoder(re_cb);
+    destroy_rle_encoder(re_cr);
+    destroy_bit_writer(bw);
+    fclose(fp_write_awi);
+
+    printf("%s: convert completed!", awi_filename);
+    free(awi_filename);
+
+    return 0;
+}
+
+int revert_awi_to_bmp(char* filename) {
+    if (!is_end_with(filename, ".awi")) return -2;
+
+    // 1. Read awi file
+    FILE* fp = fopen(filename, "rb");
+    if (fp == NULL) return -1;
+
+    BitReader* br = create_bit_reader(fp);
+
+    RLEEncoder* re_y = create_rle_encoder();
+    RLEEncoder* re_cb = create_rle_encoder();
+    RLEEncoder* re_cr = create_rle_encoder();
+
+    int width, height;
+
+    read_awi_file(br, re_y, re_cb, re_cr, &width, &height);
+    destroy_bit_reader(br);
+
+
+    // 2. RLE Decoding
+    PreEncoding* pe_y = rle_decode(re_y, width, height);
+    PreEncoding* pe_cb = rle_decode(re_cb, width, height);
+    PreEncoding* pe_cr = rle_decode(re_cr, width, height);
+    destroy_rle_encoder(re_y);
+    destroy_rle_encoder(re_cb);
+    destroy_rle_encoder(re_cr);
+
+
+    // 3. in-DCT transform
+    Channel* c_y = in_dct_channel(pe_y, width, height, QM_LUMA);
+    Channel* c_cb = in_dct_channel(pe_cb, width, height, QM_CHROM);
+    Channel* c_cr = in_dct_channel(pe_cr, width, height, QM_CHROM);
+    destroy_pre_encoding(pe_y);
+    destroy_pre_encoding(pe_cb);
+    destroy_pre_encoding(pe_cr);
+
+    int sub_width = (width + 1) / 2; // ceil
+    int sub_height = (height + 1) / 2;
+
+    // 4. in-subsampling
+    YCbCrImage* ycbcr_sampled_img = create_ycbcr_image_subsize(width, height, sub_width, sub_height);
+    ycbcr_sampled_img->y = c_y;
+    ycbcr_sampled_img->cb = c_cb;
+    ycbcr_sampled_img->cr = c_cr;
+
+    YCbCrImage* ycbcr_img = ycbcr_420_inverse_sampling(ycbcr_sampled_img);
+    RGBImage* rgb_img = ycbcr_image_to_rgb(ycbcr_img);
+
+    destroy_ycbcr_image(ycbcr_sampled_img);
+    destroy_ycbcr_image(ycbcr_img);
+
+
+    // 5. write .bmp file
+    char* bmp_filename = replace_str_end(filename, ".bmp");
+    if (bmp_filename == NULL) {
+        destroy_rgb_image(rgb_img);
+        return -2;
+    }
+
+    FILE* bmp_fp = fopen(bmp_filename, "wb");
+    if (write_bmp_file(bmp_fp, rgb_img, width, height) < 0) {
+        destroy_rgb_image(rgb_img);
+        fclose(bmp_fp);
+        return -1;
+    }
+
+    destroy_rgb_image(rgb_img);
+    fclose(bmp_fp);
+
+    printf("%s: revert completed!", bmp_filename);
+    free(bmp_filename);
+
     return 0;
 }

@@ -145,15 +145,15 @@ RGBImage* ycbcr_image_to_rgb(YCbCrImage* ycbcr_img) {
     uint8_t **cr_p = ycbcr_img->cr->p;
     uint8_t **cb_p = ycbcr_img->cb->p;
 
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            y = y_p[y][x];
-            cb = cb_p[y][x];
-            cr = cr_p[y][x];
+    for (int py = 0; py < height; py++) {
+        for (int px = 0; px < width; px++) {
+            y = y_p[py][px];
+            cb = cb_p[py][px];
+            cr = cr_p[py][px];
 
-            r_p[y][x] = clamp_uint8(y + 1.402*(cr - 128));
-            g_p[y][x] = clamp_uint8(y - 0.344136 * (cb - 128) - 0.714136 * (cr - 128));
-            b_p[y][x] = clamp_uint8(y + 1.772 * (cb - 128));
+            r_p[py][px] = clamp_uint8(y + 1.402*(cr - 128));
+            g_p[py][px] = clamp_uint8(y - 0.344136 * (cb - 128) - 0.714136 * (cr - 128));
+            b_p[py][px] = clamp_uint8(y + 1.772 * (cb - 128));
 
         }
     }
@@ -177,7 +177,7 @@ YCbCrImage* ycbcr_420_sampling(YCbCrImage* img) {
     // just take the topleft value
     // (no calculating average cuz im lazy)
     int y, x;
-    
+
     uint8_t **y_p  = img->y->p;
     uint8_t **cr_p = img->cr->p;
     uint8_t **cb_p = img->cb->p;
@@ -185,7 +185,7 @@ YCbCrImage* ycbcr_420_sampling(YCbCrImage* img) {
     uint8_t **sub_y_p  = sub_img->y->p;
     uint8_t **sub_cr_p = sub_img->cr->p;
     uint8_t **sub_cb_p = sub_img->cb->p;
-    
+
     for (y = 0; y < height; y++) {
         for (x = 0; x < width; x++) {
             sub_y_p[y][x] = y_p[y][x];
