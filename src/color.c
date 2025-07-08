@@ -98,15 +98,24 @@ YCbCrImage* rgb_image_to_ycbcr(RGBImage* rgb_img) {
 
     uint8_t r, g, b;
 
+    // for optimization
+    uint8_t **r_p = rgb_img->r->p;
+    uint8_t **g_p = rgb_img->g->p;
+    uint8_t **b_p = rgb_img->b->p;
+
+    uint8_t **y_p  = ycbcr_img->y->p;
+    uint8_t **cr_p = ycbcr_img->cr->p;
+    uint8_t **cb_p = ycbcr_img->cb->p;
+
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            r = rgb_img->r->p[y][x];
-            g = rgb_img->g->p[y][x];
-            b = rgb_img->b->p[y][x];
+            r = r_p[y][x];
+            g = g_p[y][x];
+            b = b_p[y][x];
 
-            ycbcr_img->y->p[y][x] = clamp_uint8(0.299*r+0.587*g+0.114*b);
-            ycbcr_img->cr->p[y][x] = clamp_uint8(-0.1687*r-0.3313*g+0.5*b+128);
-            ycbcr_img->cb->p[y][x] = clamp_uint8(0.5*r-0.4187*g-0.0813*b+128);
+            y_p[y][x] = clamp_uint8(0.299*r+0.587*g+0.114*b);
+            cb_p[y][x] = clamp_uint8(-0.1687*r-0.3313*g+0.5*b+128);
+            cr_p[y][x] = clamp_uint8(0.5*r-0.4187*g-0.0813*b+128);
         }
     }
 
@@ -128,15 +137,23 @@ RGBImage* ycbcr_image_to_rgb(YCbCrImage* ycbcr_img) {
     RGBImage* rgb_img = create_rgb_image(width, height);
     uint8_t y, cb, cr;
 
+    uint8_t **r_p = rgb_img->r->p;
+    uint8_t **g_p = rgb_img->g->p;
+    uint8_t **b_p = rgb_img->b->p;
+
+    uint8_t **y_p  = ycbcr_img->y->p;
+    uint8_t **cr_p = ycbcr_img->cr->p;
+    uint8_t **cb_p = ycbcr_img->cb->p;
+
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            y = ycbcr_img->y->p[y][x];
-            cb = ycbcr_img->cb->p[y][x];
-            cr = ycbcr_img->cr->p[y][x];
+            y = y_p[y][x];
+            cb = cb_p[y][x];
+            cr = cr_p[y][x];
 
-            rgb_img->r->p[y][x] = clamp_uint8(y + 1.402*(cr - 128));
-            rgb_img->g->p[y][x] = clamp_uint8(y - 0.344136 * (cb - 128) - 0.714136 * (cr - 128));
-            rgb_img->b->p[y][x] = clamp_uint8(y + 1.772 * (cb - 128));
+            r_p[y][x] = clamp_uint8(y + 1.402*(cr - 128));
+            g_p[y][x] = clamp_uint8(y - 0.344136 * (cb - 128) - 0.714136 * (cr - 128));
+            b_p[y][x] = clamp_uint8(y + 1.772 * (cb - 128));
 
         }
     }
@@ -160,13 +177,22 @@ YCbCrImage* ycbcr_420_sampling(YCbCrImage* img) {
     // just take the topleft value
     // (no calculating average cuz im lazy)
     int y, x;
+    
+    uint8_t **y_p  = img->y->p;
+    uint8_t **cr_p = img->cr->p;
+    uint8_t **cb_p = img->cb->p;
+
+    uint8_t **sub_y_p  = sub_img->y->p;
+    uint8_t **sub_cr_p = sub_img->cr->p;
+    uint8_t **sub_cb_p = sub_img->cb->p;
+    
     for (y = 0; y < height; y++) {
         for (x = 0; x < width; x++) {
-            sub_img->y->p[y][x] = img->y->p[y][x];
+            sub_y_p[y][x] = y_p[y][x];
 
             if ((y%2 == 0) && (x%2 == 0)) {
-                sub_img->cb->p[y/2][x/2] = img->cb->p[y][x];
-                sub_img->cr->p[y/2][x/2] = img->cr->p[y][x];
+                sub_cb_p[y/2][x/2] = cb_p[y][x];
+                sub_cr_p[y/2][x/2] = cr_p[y][x];
             }
         }
     }
@@ -186,14 +212,22 @@ YCbCrImage* ycbcr_420_inverse_sampling(YCbCrImage* sub_img) {
 
     YCbCrImage* img = create_ycbcr_image(width, height);
 
+    uint8_t **y_p  = img->y->p;
+    uint8_t **cr_p = img->cr->p;
+    uint8_t **cb_p = img->cb->p;
+
+    uint8_t **sub_y_p  = sub_img->y->p;
+    uint8_t **sub_cr_p = sub_img->cr->p;
+    uint8_t **sub_cb_p = sub_img->cb->p;
+
     int y, x, sub_y, sub_x;
     for (y = 0; y < height; y++) {
         for (x = 0; x < width; x++) {
             sub_x = x/2; sub_y = y/2;
 
-            img->y->p[y][x] = sub_img->y->p[y][x];
-            img->cb->p[y][x] = sub_img->cb->p[sub_y][sub_x];
-            img->cr->p[y][x] = sub_img->cr->p[sub_y][sub_x];
+            y_p[y][x] = sub_y_p[y][x];
+            cb_p[y][x] = sub_cb_p[sub_y][sub_x];
+            cr_p[y][x] = sub_cr_p[sub_y][sub_x];
         }
     }
 

@@ -5,6 +5,7 @@
 
 #include "color.h"
 #include "dct.h"
+#include "rle.h"
 #include "test.h"
 
 int convert_bmp_to_awi(char* filename);
@@ -127,28 +128,33 @@ int convert_bmp_to_awi(char* filename) {
     // int* y_dct = dct_channel(sampled_image->Y_plane, sampled_image->width, sampled_image->height);
     PreEncoding* pe = dct_channel(sampled_image->y, QM_LUMA);
 
-    // __TEST__
-    printf("original channel\n\n");
-    for (int x = 0; x < sampled_image->y->width; x++) {
-        printf("%d ", sampled_image->y->p[100][x]);
-    }
+    rle_encode(pe);
 
-    printf("\n\nPreEncoding chunks\n\n");
-    for (int i = 0; i < 20; i++) {
-        for (int j = 0; j < 64; j++) {
-            printf("%d ", pe->chunks[i].c[j]);
-        }
-        printf("\n");
-    }
 
-    Channel* in_c = in_dct_channel(pe, width, height, QM_LUMA);
-    printf("\n\nin-dct channel\n\n");
-    for (int x = 0; x < in_c->width; x++) {
-        printf("%d ", in_c->p[100][x]);
-    }
 
-    destroy_channel(in_c);
-    // __END_TEST__
+
+    // // __TEST__
+    // printf("original channel\n\n");
+    // for (int x = 0; x < sampled_image->y->width; x++) {
+    //     printf("%d ", sampled_image->y->p[100][x]);
+    // }
+
+    // printf("\n\nPreEncoding chunks\n\n");
+    // for (int i = 0; i < 20; i++) {
+    //     for (int j = 0; j < 64; j++) {
+    //         printf("%d ", pe->chunks[i].c[j]);
+    //     }
+    //     printf("\n");
+    // }
+
+    // Channel* in_c = in_dct_channel(pe, width, height, QM_LUMA);
+    // printf("\n\nin-dct channel\n\n");
+    // for (int x = 0; x < in_c->width; x++) {
+    //     printf("%d ", in_c->p[100][x]);
+    // }
+
+    // destroy_channel(in_c);
+    // // __END_TEST__
 
     destroy_pre_encoding(pe);
     destroy_ycbcr_image(sampled_image);
