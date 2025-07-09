@@ -94,7 +94,6 @@ YCbCrImage* rgb_image_to_ycbcr(RGBImage* rgb_img) {
     int height = rgb_img->r->height;
 
     YCbCrImage* ycbcr_img = create_ycbcr_image(width, height);
-    ycbcr_img->is_subsampled = false;
 
     uint8_t r, g, b;
 
@@ -207,8 +206,6 @@ YCbCrImage* ycbcr_420_inverse_sampling(YCbCrImage* sub_img) {
 
     int width = sub_img->y->width;
     int height = sub_img->y->height;
-    int sub_width = sub_img->cb->width;
-    int sub_height = sub_img->cb->height;
 
     YCbCrImage* img = create_ycbcr_image(width, height);
 

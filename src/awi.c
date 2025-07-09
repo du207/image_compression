@@ -103,6 +103,10 @@ static void read_rle_file(BitReader* br, RLEEncoder* re, int units_length) {
 
         bit_reader_align_to_byte(br); // padding
     }
+
+    if (units_count != units_length) {
+        fprintf(stderr, "Units count not match!\n");
+    }
 }
 
 void read_awi_file(BitReader *br, RLEEncoder* re_y, RLEEncoder* re_cb, RLEEncoder* re_cr, int* width, int* height) {

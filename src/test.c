@@ -2,6 +2,7 @@
 
 #include "bitrw.h"
 #include "dct.h"
+#include "bmp.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <threads.h>
@@ -77,4 +78,17 @@ void bit_write_test() {
 
     // 11010010110110101101100100100110
     // 11010010110110101101100100100110
+}
+
+
+
+void bmp_read_write_test() {
+    FILE* fp = fopen("sample/sample1.bmp", "rb");
+    int width, height;
+
+    RGBImage* rgb_img = read_bmp_file(fp, &width, &height);
+
+    FILE *write_fp = fopen("build/fuck.bmp", "wb");
+
+    write_bmp_file(write_fp, rgb_img, width, height);
 }

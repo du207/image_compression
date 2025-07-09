@@ -17,6 +17,10 @@ RGBImage* read_bmp_file(FILE* fp, int* width, int* height) {
     *width = *(int *) &header[18]; // 4bytes
     *height = *(int *) &header[22]; // 4bytes
 
+    // move pointer to bmp data section
+    uint32_t pixel_data_offset = *(uint32_t*)&header[10];
+    fseek(fp, pixel_data_offset, SEEK_SET);
+
     RGBImage* img = create_rgb_image(*width, *height);
 
     int bits_per_pixel = 24; // 24bit bmp file
@@ -92,7 +96,7 @@ int write_bmp_file(FILE* fp, RGBImage* img, int width, int height) {
     uint8_t** g_p = img->g->p;
     uint8_t** b_p = img->b->p;
 
-    uint8_t* row = malloc(row_stride);
+    uint8_t* row = (uint8_t*) malloc(row_stride);
     for (int y = height - 1; y >= 0; y--) { // BMP file is formated in reverse (wtf)
         memset(row, 0, row_stride); // initialize including paddings
 

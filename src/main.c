@@ -59,6 +59,7 @@ int main (int argc, char** argv) {
         printf("image_compression revert (.awi image file)\n");
         printf("image_compression show (.awi image file)\n");
         printf("\n* Only supports for 24bit bmp file\n");
+        bmp_read_write_test();
     }
 
     return 0;
@@ -148,7 +149,7 @@ int convert_bmp_to_awi(char* filename) {
     destroy_bit_writer(bw);
     fclose(fp_write_awi);
 
-    printf("%s: convert completed!", awi_filename);
+    printf("%s: convert completed!\n", awi_filename);
     free(awi_filename);
 
     return 0;
@@ -172,37 +173,44 @@ int revert_awi_to_bmp(char* filename) {
     read_awi_file(br, re_y, re_cb, re_cr, &width, &height);
     destroy_bit_reader(br);
 
+    int sub_width = (width + 1) / 2; // ceil
+    int sub_height = (height + 1) / 2;
 
     // 2. RLE Decoding
     PreEncoding* pe_y = rle_decode(re_y, width, height);
-    PreEncoding* pe_cb = rle_decode(re_cb, width, height);
-    PreEncoding* pe_cr = rle_decode(re_cr, width, height);
+    PreEncoding* pe_cb = rle_decode(re_cb, sub_width, sub_height);
+    PreEncoding* pe_cr = rle_decode(re_cr, sub_width, sub_height);
     destroy_rle_encoder(re_y);
     destroy_rle_encoder(re_cb);
     destroy_rle_encoder(re_cr);
 
 
     // 3. in-DCT transform
+
+    
     Channel* c_y = in_dct_channel(pe_y, width, height, QM_LUMA);
-    Channel* c_cb = in_dct_channel(pe_cb, width, height, QM_CHROM);
-    Channel* c_cr = in_dct_channel(pe_cr, width, height, QM_CHROM);
+    Channel* c_cb = in_dct_channel(pe_cb, sub_width, sub_height, QM_CHROM);
+    Channel* c_cr = in_dct_channel(pe_cr, sub_width, sub_height, QM_CHROM);
     destroy_pre_encoding(pe_y);
     destroy_pre_encoding(pe_cb);
     destroy_pre_encoding(pe_cr);
 
-    int sub_width = (width + 1) / 2; // ceil
-    int sub_height = (height + 1) / 2;
-
+    
     // 4. in-subsampling
-    YCbCrImage* ycbcr_sampled_img = create_ycbcr_image_subsize(width, height, sub_width, sub_height);
-    ycbcr_sampled_img->y = c_y;
-    ycbcr_sampled_img->cb = c_cb;
-    ycbcr_sampled_img->cr = c_cr;
-
-    YCbCrImage* ycbcr_img = ycbcr_420_inverse_sampling(ycbcr_sampled_img);
+    YCbCrImage ycbcr_sampled_img = {
+        .is_subsampled = true,
+        .y = c_y,
+        .cb = c_cb,
+        .cr = c_cr
+    };
+    
+    YCbCrImage* ycbcr_img = ycbcr_420_inverse_sampling(&ycbcr_sampled_img);
+    
     RGBImage* rgb_img = ycbcr_image_to_rgb(ycbcr_img);
 
-    destroy_ycbcr_image(ycbcr_sampled_img);
+    destroy_channel(c_y);
+    destroy_channel(c_cb);
+    destroy_channel(c_cr);
     destroy_ycbcr_image(ycbcr_img);
 
 
@@ -223,7 +231,7 @@ int revert_awi_to_bmp(char* filename) {
     destroy_rgb_image(rgb_img);
     fclose(bmp_fp);
 
-    printf("%s: revert completed!", bmp_filename);
+    printf("%s: revert completed!\n", bmp_filename);
     free(bmp_filename);
 
     return 0;

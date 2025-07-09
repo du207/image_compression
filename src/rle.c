@@ -158,9 +158,8 @@ PreEncoding* rle_decode(RLEEncoder* re, int width, int height) {
                 : unit.diff;
 
             dc = diff + prev_dc;
-            chunks[chunk_idx].c[0] = dc;
+            chunks[chunk_idx].c[cc_idx++] = dc;
             prev_dc = dc;
-            cc_idx = 1;
         } else if (unit.type == RLE_AC) {
             for (j = 0; j < unit.entry.run_length; j++) {
                 chunks[chunk_idx].c[cc_idx++] = 0;
@@ -182,6 +181,7 @@ PreEncoding* rle_decode(RLEEncoder* re, int width, int height) {
             }
 
             chunk_idx++;
+            cc_idx = 0;
         }
     }
 

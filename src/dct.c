@@ -199,7 +199,7 @@ Block_int in_zigzag_block(Chunk chunk) {
 }
 
 
-static Block_u8 get_block_u8_from_channel(Channel* c, int block_x, int block_y) {
+static Block_u8 get_block_from_channel(Channel* c, int block_x, int block_y) {
     Block_u8 block;
 
     int p_x = block_x * 8;
@@ -207,13 +207,14 @@ static Block_u8 get_block_u8_from_channel(Channel* c, int block_x, int block_y) 
 
     int width = c->width;
     int height = c->height;
+    int img_x, img_y;
 
     for (int y = 0; y < 8; y++) {
+        img_y = p_y + y;
         for (int x = 0; x < 8; x++) {
-            int img_x = p_x + x;
-            int img_y = p_y + y;
+            img_x = p_x + x;
             if (img_x < width && img_y < height) {
-                block.b[y][x] = c->p[p_y + y][p_x + x];
+                block.b[y][x] = c->p[img_y][img_x];
             } else {
                 // padding added
                 block.b[y][x] = 0;
@@ -224,6 +225,12 @@ static Block_u8 get_block_u8_from_channel(Channel* c, int block_x, int block_y) 
     return block;
 }
 
+static void print_chunk(Chunk a) {
+    for (int i = 0; i < 64; i++) {
+        printf("%d ", a.c[i]);
+    }
+    printf("\n");
+}
 
 // dct transform + quantize + zigzag
 PreEncoding* dct_channel(Channel* c, QuantMode qm) {
@@ -243,7 +250,7 @@ PreEncoding* dct_channel(Channel* c, QuantMode qm) {
 
     for (int by = 0; by < blocks_h; by++) {
         for (int bx = 0; bx < blocks_w; bx++) {
-            block = get_block_u8_from_channel(c, bx, by);
+            block = get_block_from_channel(c, bx, by);
 
             dct_b = dct_block(block);
             quan_b = quantize_block(dct_b, qm);
@@ -257,15 +264,17 @@ PreEncoding* dct_channel(Channel* c, QuantMode qm) {
 }
 
 static void write_channel_from_block(Channel* c, Block_u8 b, int bx, int by, int width, int height) {
-    int p_y, p_x;
+    int p_y = by * 8;
+    int p_x = bx * 8;
+    int c_y, c_x;
 
     for (int y = 0; y < 8; y++) {
+        c_y = p_y + y;
         for (int x = 0; x < 8; x++) {
-            p_y = by * 8 + y;
-            p_x = bx * 8 + x;
+            c_x = p_x + x;
 
-            if (p_y < height && p_x < width) { // padding ignored
-                c->p[p_y][p_x] = b.b[y][x];
+            if (c_y < height && c_x < width) { // padding ignored
+                c->p[c_y][c_x] = b.b[y][x];
             }
         }
     }
@@ -280,13 +289,14 @@ Channel* in_dct_channel(PreEncoding* pe, int width, int height, QuantMode qm) {
 
     Channel* c = create_channel(width, height);
 
+    Chunk* chunks = pe->chunks;
     Chunk chunk;
     Block_int in_zig_res, in_quan_res;
     Block_u8 in_dct_res;
 
     for (int by = 0; by < blocks_h; by++) {
         for (int bx = 0; bx < blocks_w; bx++) {
-            chunk = pe->chunks[by * blocks_w + bx];
+            chunk = chunks[by * blocks_w + bx];
             in_zig_res = in_zigzag_block(chunk);
             in_quan_res = in_quantize_block(in_zig_res, qm);
             in_dct_res = in_dct_block(in_quan_res);

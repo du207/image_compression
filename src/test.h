@@ -8,4 +8,6 @@ void dct_test();
 
 void bit_write_test();
 
+void bmp_read_write_test();
+
 #endif
