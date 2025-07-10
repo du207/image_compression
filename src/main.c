@@ -12,7 +12,6 @@
 #include "bitrw.h"
 #include "bmp.h"
 #include "color.h"
-#include "test.h"
 #include "utils.h"
 
 int convert_bmp_to_awi(char* filename);
@@ -65,7 +64,6 @@ int main (int argc, char** argv) {
         printf("image_compression revert (.awi image file)\n");
         printf("image_compression show (.awi image file)\n");
         printf("\n* Only supports for 24bit bmp file\n");
-        bmp_read_write_test();
     }
 
     return 0;
