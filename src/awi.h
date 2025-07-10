@@ -31,7 +31,19 @@ typedef struct {
     uint32_t cr_units_length;
 } AWIHeader;
 
-void write_awi_file(BitWriter* bw, RLEEncoder* re_y, RLEEncoder* re_cb, RLEEncoder* re_cr, int width, int height);
-void read_awi_file(BitReader *br, RLEEncoder* re_y, RLEEncoder* re_cb, RLEEncoder* re_cr, int* width, int* height);
+typedef struct {
+    RLEEncoder* re_y;
+    RLEEncoder* re_cb;
+    RLEEncoder* re_cr;
+} AWIContent;
+
+void write_awi_file(BitWriter* bw, AWIContent* content, int width, int height);
+void read_awi_file(BitReader *br, AWIContent* content, int* width, int* height);
+
+AWIContent* create_awi_content(RLEEncoder* re_y, RLEEncoder* re_cb, RLEEncoder* re_cr);
+void destroy_awi_content(AWIContent* content);
+
+AWIContent* rgb_img_to_awi_content(RGBImage* rgb_img);
+RGBImage* awi_content_to_rgb_img(AWIContent* content, int width, int height);
 
 #endif
