@@ -36,17 +36,22 @@ void destroy_rle_encoder(RLEEncoder* re) {
 }
 
 void add_rle_unit(RLEEncoder* re, RLEUnit ru) {
-    if (++re->units_length > re->units_capacity) {
-        re->units_capacity *= 2;
-        RLEUnit* tmp = (RLEUnit*) realloc(re->units, sizeof(RLEUnit) * re->units_capacity);
+    if (re->units_length >= re->units_capacity) {
+        size_t new_capacity = re->units_capacity * 2;
+        if (new_capacity == 0) new_capacity = RLE_INITIAL_CAPACITY;
+
+        RLEUnit* tmp = (RLEUnit*) realloc(re->units, sizeof(RLEUnit) * new_capacity);
         if (tmp == NULL) {
             fprintf(stderr, "Memory reallocation error!\n");
             return;
         }
+
         re->units = tmp;
+        re->units_capacity = new_capacity;
     }
 
-    re->units[re->units_length - 1] = ru;
+    re->units[re->units_length] = ru;
+    re->units_length++;
 }
 
 
@@ -135,7 +140,6 @@ void rle_encode_chunk(RLEEncoder* re, Chunk c, int prev_dc) {
 PreEncoding* rle_decode(RLEEncoder* re, int width, int height) {
     int c_width = (width + 7) / 8; // ceil
     int c_height = (height + 7) / 8;
-    int chunks_count = c_width * c_height;
 
     PreEncoding* pe = create_pre_encoding(c_width, c_height);
 

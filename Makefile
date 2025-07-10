@@ -1,12 +1,16 @@
 CC=gcc
-CFLAGS=-I$(SRC_DIR)
-LDFLAGS=-lm
+CFLAGS=-I$(SRC_DIR) $(shell sdl2-config --cflags)
+LDFLAGS=-lm $(shell sdl2-config --libs)
 
 BUILD_DIR=./build
 SRC_DIR=./src
 SRCS := $(shell find $(SRC_DIRS) -name '*.cpp' -or -name '*.c' -or -name '*.s')
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
 TARGET=image_compression
+
+ifdef DEBUG
+	CFLAGS += -Wall -Wextra
+endif
 
 all: $(BUILD_DIR)/$(TARGET)
 
@@ -18,7 +22,8 @@ $(BUILD_DIR)/%.c.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -r $(BUILD_DIR)
+	rm -rf $(BUILD_DIR)
+	rm -f sample/*.awi
 
 run:
 	$(BUILD_DIR)/$(TARGET)

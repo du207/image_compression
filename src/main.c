@@ -1,19 +1,23 @@
+#include <SDL2/SDL_error.h>
+#include <SDL2/SDL_events.h>
+#include <SDL2/SDL_render.h>
+#include <SDL2/SDL_video.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <SDL2/SDL.h>
 
 #include "awi.h"
 #include "bitrw.h"
 #include "bmp.h"
 #include "color.h"
-#include "dct.h"
-#include "rle.h"
 #include "test.h"
 #include "utils.h"
 
 int convert_bmp_to_awi(char* filename);
 int revert_awi_to_bmp(char* filename);
+int show_awi_file(char* filename);
 
 
 int main (int argc, char** argv) {
@@ -50,6 +54,8 @@ int main (int argc, char** argv) {
             return 1;
         }
 
+        err_code = show_awi_file(filename);
+        if (err_code < 0) goto error_handle;
     } else {
         // show help command
         printf("*********************************\n");
@@ -73,6 +79,9 @@ error_handle:
     case -2:
         printf("Invalid file format!\n");
         return 2;
+    case -3:
+        printf("SDL Error!\n");
+        return 3;
     default:
         printf("Unknown error!\n");
         return 1;
@@ -98,7 +107,6 @@ int convert_bmp_to_awi(char* filename) {
 
     AWIContent* content = rgb_img_to_awi_content(rgb_image);
 
-
    // Write .awi file
     char* awi_filename = replace_str_end(filename, ".awi");
     if (awi_filename == NULL) {
@@ -112,9 +120,14 @@ int convert_bmp_to_awi(char* filename) {
         return -1;
     }
 
-    BitWriter* bw = create_bit_writer(fp);
+    BitWriter* bw = create_bit_writer(fp_write_awi);
 
-    write_awi_file(bw, content, width, height);
+    if (write_awi_file(bw, content, width, height) < 0) {
+        destroy_awi_content(content);
+        destroy_bit_writer(bw);
+        fclose(fp_write_awi);
+        return -1;
+    }
 
     destroy_awi_content(content);
     destroy_bit_writer(bw);
@@ -129,22 +142,24 @@ int convert_bmp_to_awi(char* filename) {
 int revert_awi_to_bmp(char* filename) {
     if (!is_end_with(filename, ".awi")) return -2;
 
-    // 1. Read awi file
+    // Read awi file
     FILE* fp = fopen(filename, "rb");
     if (fp == NULL) return -1;
 
     BitReader* br = create_bit_reader(fp);
 
-    AWIContent* content;
-
     int width, height;
 
-    read_awi_file(br, content, &width, &height);
+    AWIContent* content = read_awi_file(br, &width, &height);
     destroy_bit_reader(br);
+    fclose(fp);
+
+    if (content == NULL) return -2;
 
     RGBImage* rgb_img = awi_content_to_rgb_img(content, width, height);
+    destroy_awi_content(content);
 
-    // 5. write .bmp file
+    // Write .bmp file
     char* bmp_filename = replace_str_end(filename, ".bmp");
     if (bmp_filename == NULL) {
         destroy_rgb_image(rgb_img);
@@ -163,6 +178,110 @@ int revert_awi_to_bmp(char* filename) {
 
     printf("%s: revert completed!\n", bmp_filename);
     free(bmp_filename);
+
+    return 0;
+}
+
+
+
+int show_awi_file(char* filename) {
+    if (!is_end_with(filename, ".awi")) return -2;
+
+    // Read awi file
+    FILE* fp = fopen(filename, "rb");
+    if (fp == NULL) return -1;
+
+    BitReader* br = create_bit_reader(fp);
+
+    int width, height;
+
+    AWIContent* content = read_awi_file(br, &width, &height);
+    destroy_bit_reader(br);
+    fclose(fp);
+
+    if (content == NULL) return -1;
+
+    RGBImage* rgb_img = awi_content_to_rgb_img(content, width, height);
+
+    destroy_awi_content(content);
+
+    // SDL Image Viewer
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        fprintf(stderr, "SDL_Init Error: %s\n", SDL_GetError());
+        return -3;
+    }
+
+    SDL_Window* window = SDL_CreateWindow("AWI Image Viewer",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        width, height, SDL_WINDOW_SHOWN);
+
+    if (!window) {
+        fprintf(stderr, "CreateWindow Error: %s\n", SDL_GetError());
+        SDL_Quit();
+        return -3;
+    }
+
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+
+    if (!renderer) {
+        fprintf(stderr, "CreateRenderer Error: %s\n", SDL_GetError());
+        destroy_rgb_image(rgb_img);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return -3;
+    }
+
+    SDL_Texture* texture = SDL_CreateTexture(renderer,
+        SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, width, height);
+
+    if (!texture) {
+        fprintf(stderr, "CreateTexture Error: %s\n", SDL_GetError());
+        destroy_rgb_image(rgb_img);
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return -3;
+    }
+
+    uint8_t* pixels = (uint8_t*) malloc(width * height * 3);
+
+    uint8_t** r_p = rgb_img->r->p;
+    uint8_t** g_p = rgb_img->g->p;
+    uint8_t** b_p = rgb_img->b->p;
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int offset = (y * width + x) * 3;
+            pixels[offset] = r_p[y][x];
+            pixels[offset + 1] = g_p[y][x];
+            pixels[offset + 2] = b_p[y][x];
+        }
+    }
+
+    destroy_rgb_image(rgb_img);
+
+    int running = 1;
+    SDL_Event e;
+
+    SDL_UpdateTexture(texture, NULL, pixels, width * 3);
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, texture, NULL, NULL);
+    SDL_RenderPresent(renderer);
+
+    while (running) {
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT)
+                running = 0;
+        }
+
+        SDL_Delay(16); // 62.5fps
+    }
+
+    free(pixels);
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
 
     return 0;
 }

@@ -37,8 +37,8 @@ typedef struct {
     RLEEncoder* re_cr;
 } AWIContent;
 
-void write_awi_file(BitWriter* bw, AWIContent* content, int width, int height);
-void read_awi_file(BitReader *br, AWIContent* content, int* width, int* height);
+int write_awi_file(BitWriter* bw, AWIContent* content, int width, int height);
+AWIContent* read_awi_file(BitReader *br, int* width, int* height);
 
 AWIContent* create_awi_content(RLEEncoder* re_y, RLEEncoder* re_cb, RLEEncoder* re_cr);
 void destroy_awi_content(AWIContent* content);

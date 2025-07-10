@@ -33,7 +33,7 @@ char* replace_str_end(const char* str, const char* end) {
 
     if (len_str < len_end) return NULL;
 
-    char* out = (char*) malloc(sizeof(char) * len_str);
+    char* out = (char*) malloc(len_str + 1);
     strcpy(out, str);
     strcpy(out + (len_str - len_end), end);
 
