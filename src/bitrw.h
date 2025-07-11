@@ -38,4 +38,54 @@ int bit_read(BitReader* br, int bits_size, uint32_t* out);
 // align to byte
 void bit_reader_align_to_byte(BitReader* br);
 
+
+
+
+typedef struct {
+    void* context; // caller defined context (can be file pointer or whatever)
+
+    // write to buffer
+    // return read bytes length
+    size_t (*read)(void* context, void* buf, size_t size);
+
+    // move offset
+    // return 0 if success, non-zero if fail
+    size_t (*seek)(void* context, long offset, int whence);
+    
+} InputStream;
+
+// for writing pixel data (BMP file, RGB pixel buffers, ..)
+typedef struct {
+    void* context; // caller defined context (can be file pointer or whatever)
+    
+    // optional, run before writing blocks
+    void (*begin)(void* context, int width, int height);
+
+    // write 8x8 block
+    // width height for entire image size
+    void (*write_block)(void* context, int bx, int by, int width, int height);
+    
+    // optional, run after writing blocks
+    void (*end)(void* context);
+    
+} OutputPixelStream;
+
+// for writing bits chunks (.AWI file encoded datas)
+typedef struct {
+    void* context; // caller defined context (can be file pointer or whatever)
+
+    // optional, run before writing bits
+    void (*begin)(void* context, int width, int height);
+
+    // write bits chunk
+    // width height for entire image size
+    void (*write_bits)(void* context, uint32_t bits, int bit_size);
+
+    // optional, run after writing bits
+    void (*end)(void* context);
+
+} OutputBitStream;
+
+
+
 #endif

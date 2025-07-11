@@ -2,7 +2,16 @@
 #define __COLOR_H__
 
 #include <stdint.h>
+#include "block.h"
 
+
+
+void rgb_block16_to_ycbcr(RGBBlock16* rgb_b, YCbCrBlock_full* ycbcr_b);
+void ycbcr_block_to_rgb(YCbCrBlock_full* ycbcr_b, RGBBlock16* rgb_b);
+void ycbcr_block_subsample(YCbCrBlock_full* full, YCbCrBlock_sampled* sampled);
+void ycbcr_block_upsample(YCbCrBlock_sampled* sampled, YCbCrBlock_full* full);
+
+/*
 typedef struct {
     int width;
     int height;
@@ -43,7 +52,7 @@ void destroy_ycbcr_image(YCbCrImage* img);
 Y=0.299⋅R+0.587⋅G+0.114⋅B
 Cb=−0.1687⋅R−0.3313⋅G+0.5⋅B+128
 Cr=0.5⋅R−0.4187⋅G−0.0813⋅B+128
-*/
+
 
 // rgb_img expected to have r, g, b all same width and height
 YCbCrImage* rgb_image_to_ycbcr(RGBImage* rgb_img);
@@ -56,6 +65,6 @@ YCbCrImage* ycbcr_420_sampling(YCbCrImage* img);
 // img expected to have cb, cr sub_width*sub_height (is_sampled = true)
 YCbCrImage* ycbcr_420_inverse_sampling(YCbCrImage* img);
 
-
+*/
 
 #endif

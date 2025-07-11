@@ -1,7 +1,7 @@
 #include "awi.h"
 #include "bitrw.h"
 #include "color.h"
-#include "rle.h"
+#include "block.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,196 +9,66 @@
 #include <string.h>
 
 
+static void transform_block(Block_u8* in, Chunk* out, QuantMode qm) {
+    Block_int dct_out, quantize_out;
+    dct_block(&in, &dct_out);
+    quantize_block(&dct_out, &quantize_out, qm);
+    zigzag_block(&quantize_out, &out);
+}
+
+
+int compress_to_awi(PixelInput* pi, BitsOutput* bo) {
+    if (!bo->begin(bo)) {
+        fprintf(stderr, "Compressing: Bits output Preprogressing error!\n");
+        return 0;
+    }
+
+    int width = pi->width;
+    int height = pi->height;
+
+    // 16x16 blocks
+    int blocks_16_w = (width + 15) / 16; // ceil
+    int blocks_16_h = (height + 15) / 16;
+
+    int b16_y, b16_x;
+
+    for (b16_y = 0; b16_y < blocks_16_h; b16_y++) {
+        for (b16_x = 0; b16_x < blocks_16_w; b16_x++) {
+            RGBBlock16 rgb_b;
+            YCbCrBlock_full ycbcr_full;
+            YCbCrBlock_sampled ycbcr_sampled;
+
+            if (!pi->read_block(pi, b16_x, b16_y, &rgb_b)) {
+                fprintf(stderr, "Reading RGB blocks error!\n");
+                return 0;
+            }
+
+            rgb_block16_to_ycbcr(&rgb_b, &ycbcr_full);
+            ycbcr_block_subsample(&ycbcr_full, &ycbcr_sampled);
+
+            Chunk y_cnks[4];
+            Chunk cb_cnk, cr_cnk;
+
+            for (int i = 0; i < 2; i++) {
+                for (int j = 0; j < 2; j++) {
+                    transform_block(&ycbcr_sampled.y[i][j], &y_cnks[i*2 + j], QM_LUMA);
+                }
+            }
+
+            transform_block()
+
+            
+        }
+    }    
+
+    return 1;
+}
+
+
+
+
+
 /*
-HEADER:
-8 bytes : AWESOMEI (in ascii)
-4 bytes : width
-4 bytes : height
-4 bytes : y units length
-4 bytes : cb units length
-4 bytes : cr units length
-*/
-
-
-static void write_rle_file(BitWriter* bw, RLEEncoder* re) {
-    int rle_units_length = re->units_length;
-    RLEUnit* units = re->units;
-    RLEUnit unit;
-    uint8_t unit_symbol;
-
-    for (int i = 0; i < rle_units_length; i++) {
-        unit = units[i];
-        if (unit.type == RLE_DC) {
-            bit_write(bw, unit.diff, 12);
-        } else if (unit.type == RLE_AC) {
-            unit_symbol = (unit.entry.run_length << 4) + unit.entry.size;
-
-            bit_write(bw, unit_symbol, 8);
-            bit_write(bw, unit.entry.value, unit.entry.size);
-        } else { // RLE_EOB
-            bit_write(bw, 0, 8);
-            bit_writer_flush(bw);
-        }
-    }
-}
-
-int write_awi_file(BitWriter* bw, AWIContent *content, int width, int height) {
-    RLEEncoder* re_y = content->re_y;
-    RLEEncoder* re_cb = content->re_cb;
-    RLEEncoder* re_cr = content->re_cr;
-
-    // HEADER: 28 bytes
-    AWIHeader header = {
-        .title = {'A', 'W', 'E', 'S', 'O', 'M', 'E', 'I'},
-        .width = width,
-        .height = height,
-        .y_units_length = re_y->units_length,
-        .cb_units_length = re_cb->units_length,
-        .cr_units_length = re_cr->units_length
-    };
-
-    if (fwrite(&header, sizeof(AWIHeader), 1, bw->fp) != 1) {
-        return -1;
-    }
-
-    write_rle_file(bw, re_y);
-    write_rle_file(bw, re_cb);
-    write_rle_file(bw, re_cr);
-
-    return 0;
-}
-
-
-static void read_rle_file(BitReader* br, RLEEncoder* re, int units_length) {
-    uint16_t dc_diff;
-    uint8_t symbol;
-    uint8_t run_length, size;
-    uint32_t value;
-    int units_count = 0;
-
-    while (units_count < units_length) {
-        // dc
-        bit_read(br, 12, (uint32_t*) &dc_diff);
-
-        add_rle_unit(re, (RLEUnit) {
-            .type = RLE_DC,
-            .diff = dc_diff
-        });
-        units_count++;
-
-        // ac
-        while (1) {
-            if (units_count >= units_length) break; // guard
-            bit_read(br, 8, (uint32_t*) &symbol);
-            if (symbol == 0) break; // eob!
-
-            run_length = symbol >> 4;
-            size = symbol & 0b1111;
-
-            bit_read(br, size, &value);
-
-            add_rle_unit(re, (RLEUnit) {
-                .type = RLE_AC,
-                .entry = create_rle_entry(run_length, size, value)
-            });
-            units_count++;
-        }
-
-        if (units_count >= units_length) break;
-
-        // EOB
-        add_rle_unit(re, (RLEUnit) {
-            .type = RLE_EOB
-        });
-        units_count++;
-
-        bit_reader_align_to_byte(br); // padding
-    }
-
-    if (units_count != units_length) {
-        fprintf(stderr, "Units count not match!\n");
-    }
-}
-
-AWIContent* read_awi_file(BitReader *br, int* width, int* height) {
-    AWIHeader header;
-    if (fread(&header, sizeof(AWIHeader), 1, br->fp) != 1) {
-        fprintf(stderr, "File reading error!\n");
-        return NULL;
-    }
-
-    char expected_title[8] = {'A', 'W', 'E', 'S', 'O', 'M', 'E', 'I'};
-    if (memcmp(header.title, expected_title, 8) != 0) {
-        fprintf(stderr, "Invalid file format!\n");
-        return NULL;
-    }
-
-    *width = header.width;
-    *height = header.height;
-    int y_unit_length = header.y_units_length;
-    int cb_unit_length = header.cb_units_length;
-    int cr_unit_length = header.cr_units_length;
-
-    RLEEncoder* re_y = create_rle_encoder();
-    RLEEncoder* re_cb = create_rle_encoder();
-    RLEEncoder* re_cr = create_rle_encoder();
-
-    read_rle_file(br, re_y, y_unit_length);
-    read_rle_file(br, re_cb, cb_unit_length);
-    read_rle_file(br, re_cr, cr_unit_length);
-
-    AWIContent* content = create_awi_content(re_y, re_cb, re_cr);
-    return content;
-}
-
-
-AWIContent* create_awi_content(RLEEncoder* re_y, RLEEncoder* re_cb, RLEEncoder* re_cr) {
-    AWIContent* content = (AWIContent*) malloc(sizeof(AWIContent));
-    content->re_y = re_y;
-    content->re_cb = re_cb;
-    content->re_cr = re_cr;
-    return content;
-}
-
-void destroy_awi_content(AWIContent* content) {
-    if (content == NULL) return;
-
-    destroy_rle_encoder(content->re_y);
-    destroy_rle_encoder(content->re_cb);
-    destroy_rle_encoder(content->re_cr);
-    free(content);
-}
-
-
-AWIContent* rgb_img_to_awi_content(RGBImage* rgb_img) {
-    // rgb to ycbcr, 4:2:0 sampling
-    YCbCrImage* ycbcr_img = rgb_image_to_ycbcr(rgb_img);
-    destroy_rgb_image(rgb_img); // rgb now useless
-
-    YCbCrImage* sampled_img = ycbcr_420_sampling(ycbcr_img);
-    destroy_ycbcr_image(ycbcr_img); // ycbcr now useless
-
-    // DCT transform
-    PreEncoding* pe_y = dct_channel(sampled_img->y, QM_LUMA);
-    PreEncoding* pe_cb = dct_channel(sampled_img->cb, QM_CHROM);
-    PreEncoding* pe_cr = dct_channel(sampled_img->cr, QM_CHROM);
-    destroy_ycbcr_image(sampled_img); // sampled now useless
-
-
-    // RLE Encode
-    RLEEncoder* re_y = rle_encode(pe_y);
-    destroy_pre_encoding(pe_y);
-
-    RLEEncoder* re_cb = rle_encode(pe_cb);
-    destroy_pre_encoding(pe_cb);
-
-    RLEEncoder* re_cr = rle_encode(pe_cr);
-    destroy_pre_encoding(pe_cr);
-
-    AWIContent* content = create_awi_content(re_y, re_cb, re_cr);
-    return content;
-}
-
 RGBImage* awi_content_to_rgb_img(AWIContent* content, int width, int height) {
     int sub_width = (width + 1) / 2; // ceil
     int sub_height = (height + 1) / 2;
@@ -240,3 +110,4 @@ RGBImage* awi_content_to_rgb_img(AWIContent* content, int width, int height) {
 
     return rgb_img;
 }
+*/

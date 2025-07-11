@@ -7,21 +7,6 @@
 #include <stdlib.h>
 
 
-PreEncoding* create_pre_encoding(int c_width, int c_height) {
-    PreEncoding* pe = (PreEncoding*) malloc(sizeof(PreEncoding));
-    pe->c_width = c_width;
-    pe->c_height = c_height;
-    pe->chunks = (Chunk*) malloc(sizeof(Chunk) * c_width * c_height);
-    return pe;
-}
-
-void destroy_pre_encoding(PreEncoding* pe) {
-    if (pe == NULL) return;
-    free_safe(pe->chunks);
-    free(pe);
-}
-
-
 
 // for optimization
 static float cos_table[8][8];
@@ -39,10 +24,11 @@ static void init_cos_table() {
 }
 
 
-Block_int dct_block(Block_u8 block) {
+void dct_block(Block_u8* in, Block_int* out) {
     if (!cos_table_initialized) init_cos_table();
 
-    Block_int out;
+    uint8_t** in_b = in->b;
+    int** out_b = out->b;
 
     int u, v, y, x;
     int8_t b_128;
@@ -57,22 +43,21 @@ Block_int dct_block(Block_u8 block) {
             sum = 0.0;
             for (y = 0; y < 8; y++) {
                 for (x = 0; x < 8; x++) {
-                    b_128 = block.b[y][x] - 128;
+                    b_128 = in_b[y][x] - 128;
                     sum += b_128 * cos_table[y][u] * cos_table[x][v];
                 }
             }
 
-            out.b[u][v] = (int) (0.25 * cu * cv * sum);
+            out_b[u][v] = (int) (0.25 * cu * cv * sum);
         }
     }
-
-    return out;
 }
 
-Block_u8 in_dct_block(Block_int block) {
+void in_dct_block(Block_int* in, Block_u8* out) {
     if (!cos_table_initialized) init_cos_table();
 
-    Block_u8 out;
+    int** in_b = in->b;
+    uint8_t** out_b = out->b;
 
     int u, v, y, x;
     double cu, cv, sum;
@@ -87,15 +72,13 @@ Block_u8 in_dct_block(Block_int block) {
                     cu = (u == 0) ? 1.0 / sqrt(2.0) : 1.0;
                     cv = (v == 0) ? 1.0 / sqrt(2.0) : 1.0;
 
-                    sum += cu * cv * block.b[u][v] * cos_table[y][u] * cos_table[x][v];
+                    sum += cu * cv * in_b[u][v] * cos_table[y][u] * cos_table[x][v];
                 }
             }
 
-            out.b[y][x] = clamp_uint8(0.25 * sum + 128);
+            out_b[y][x] = clamp_uint8(0.25 * sum + 128);
         }
     }
-
-    return out;
 }
 
 
@@ -124,38 +107,40 @@ static const int quantization_table_chrom[8][8] = {
     { 99, 99, 99, 99, 99,  99,  99,  99 }
 };
 
-Block_int quantize_block(Block_int block, QuantMode qm) {
-    Block_int out;
-
+void quantize_block(Block_int* in, Block_int* out, QuantMode qm) {
     const int (*quan_table)[8];
+    
     if (qm == QM_LUMA) {
         quan_table = quantization_table_luma;
     } else {
         quan_table = quantization_table_chrom;
     }
 
+    int** in_b = in->b;
+    int** out_b = out->b;
+
     for (int y = 0; y < 8; y++) {
         for (int x = 0; x < 8; x++) {
-             out.b[y][x] = round((float) block.b[y][x] / quan_table[y][x]);
+             out_b[y][x] = round((float) in_b[y][x] / quan_table[y][x]);
         }
     }
-
-    return out;
 }
 
-Block_int in_quantize_block(Block_int block, QuantMode qm) {
-    Block_int out;
-
+void in_quantize_block(Block_int* in, Block_int* out, QuantMode qm) {
     const int (*quan_table)[8];
+    
     if (qm == QM_LUMA) {
         quan_table = quantization_table_luma;
     } else {
         quan_table = quantization_table_chrom;
     }
 
+    int** in_b = in->b;
+    int** out_b = out->b;
+    
     for (int y = 0; y < 8; y++) {
         for (int x = 0; x < 8; x++) {
-            out.b[y][x] = block.b[y][x] * quan_table[y][x];
+            out_b[y][x] = in_b[y][x] * quan_table[y][x];
         }
     }
 
@@ -174,31 +159,33 @@ static const int zigzag_order[64] = {
 };
 
 
-Chunk zigzag_block(Block_int block) {
-    Chunk out;
+void zigzag_block(Block_int* in, Chunk* out) {
+    int** in_b = in->b;
+    int* out_c = out->c;
+    
     for (int i = 0; i < 64; i++) {
         int pos = zigzag_order[i];
         int y = pos / 8;
         int x = pos % 8;
-        out.c[i] = block.b[y][x];
+        out_c[i] = in_b[y][x];
     }
-
-    return out;
 }
 
-Block_int in_zigzag_block(Chunk chunk) {
-    Block_int out;
+void in_zigzag_block(Chunk* in, Block_int* out) {
+    int* in_c = in->c;
+    int** out_b = out->b;
+
     for (int i = 0; i < 64; i++) {
         int pos = zigzag_order[i];
         int y = pos / 8;
         int x = pos % 8;
-        out.b[y][x] = chunk.c[i];
+        out_b[y][x] = in_c[i];
     }
-
-    return out;
 }
 
 
+
+/*
 static Block_u8 get_block_from_channel(Channel* c, int block_x, int block_y) {
     Block_u8 block;
 
@@ -301,3 +288,5 @@ Channel* in_dct_channel(PreEncoding* pe, int width, int height, QuantMode qm) {
 
     return c;
 }
+*/
+

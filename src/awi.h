@@ -4,15 +4,13 @@
 #include "bitrw.h"
 #include "rle.h"
 #include <stdint.h>
+#include <stdbool.h>
 
 /*
 HEADER:
 8 bytes : AWESOMEI (in ascii)
 4 bytes : width
 4 bytes : height
-4 bytes : y units length
-4 bytes : cb units length
-4 bytes : cr units length
 
 CONTENT:
 // *DC -> diff of previous dc (12 bits)
@@ -22,28 +20,77 @@ CONTENT:
 // *(padding, byte align)
 */
 
-typedef struct {
-    char title[8];
-    uint32_t width;
-    uint32_t height;
-    uint32_t y_units_length;
-    uint32_t cb_units_length;
-    uint32_t cr_units_length;
-} AWIHeader;
+#include "block.h"
+#include <stdint.h>
+
 
 typedef struct {
-    RLEEncoder* re_y;
-    RLEEncoder* re_cb;
-    RLEEncoder* re_cr;
-} AWIContent;
+    void* context; // caller defined context (can be file pointer or whatever)
+    int width;
+    int height;
+    
+    // if success true, it fail false
+    
+    // optional, run before reading blocks (maybe read headers)
+    bool (*begin)(PixelInput* self);
 
-int write_awi_file(BitWriter* bw, AWIContent* content, int width, int height);
-AWIContent* read_awi_file(BitReader *br, int* width, int* height);
+    // read 16x16 block
+    bool (*read_block)(PixelInput* self, int bx, int by, RGBBlock16* rgb_out);
 
-AWIContent* create_awi_content(RLEEncoder* re_y, RLEEncoder* re_cb, RLEEncoder* re_cr);
-void destroy_awi_content(AWIContent* content);
+    // optional, run after reading blocks
+    bool (*end)(PixelInput* self);
+} PixelInput;
 
-AWIContent* rgb_img_to_awi_content(RGBImage* rgb_img);
-RGBImage* awi_content_to_rgb_img(AWIContent* content, int width, int height);
+// for writing pixel data (BMP file, RGB pixel buffers, ..)
+typedef struct PixelOutput {
+    void* context; // caller defined context (can be file pointer or whatever)
+    int width;
+    int height;
+
+    // if success true, it fail false
+
+    // optional, run before writing blocks
+    bool (*begin)(struct PixelOutput* self);
+
+    // write 16x16 block
+    // width height for entire image size
+    bool (*write_block)(struct PixelOutput* self, int bx, int by, RGBBlock16* block);
+    
+    // optional, run after writing blocks
+    bool (*end)(struct PixelOutput* self);
+
+} PixelOutput;
+
+typedef struct BitsInput {
+    void* context; // caller defined context (can be file pointer or whatever)
+    int units_length;
+    
+    // if success true, it fail false
+    
+    // optional, run before reading bits (maybe read headers)
+    bool (*begin)(struct BitsInput* self);
+
+    // read bits chunk
+    bool (*read_bits)(struct BitsInput* self, uint32_t* bits, int bit_size);
+
+    // optional, run after reading bits
+    bool (*end)(struct BitsInput* self);
+} BitsInput;
+
+// for writing bits chunks (.AWI file encoded datas)
+typedef struct BitsOutput {
+    void* context; // caller defined context (can be file pointer or whatever)
+    int units_length;
+
+    // optional, run before writing bits
+    bool (*begin)(struct BitsOutput* self);
+
+    // write bits chunk
+    bool (*write_bits)(struct BitsOutput* self, uint32_t bits, int bit_size);
+
+    // optional, run after writing bits
+    bool (*end)(struct BitsOutput* self);
+
+} BitsOutput;
 
 #endif

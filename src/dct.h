@@ -31,21 +31,17 @@ PreEncoding* create_pre_encoding(int c_width, int c_height);
 void destroy_pre_encoding(PreEncoding* pe);
 
 // 'in_' means 'inverse'
-Block_int dct_block(Block_u8 block);
-Block_u8 in_dct_block(Block_int block);
+void dct_block(Block_u8* in, Block_int* out);
+void in_dct_block(Block_int* in, Block_u8* out);
 
 // QM_LUMA for Y, QM_CHROM for Cb, Cr
 typedef enum { QM_LUMA, QM_CHROM } QuantMode;
 
-Block_int quantize_block(Block_int block, QuantMode qm);
-Block_int in_quantize_block(Block_int block, QuantMode qm);
+void quantize_block(Block_int* in, Block_int* out, QuantMode qm);
+void in_quantize_block(Block_int* in, Block_int* out, QuantMode qm);
 
-Chunk zigzag_block(Block_int block);
-Block_int in_zigzag_block(Chunk chunk);
-
-PreEncoding* dct_channel(Channel* c, QuantMode qm);
-// width, height for pixels
-Channel* in_dct_channel(PreEncoding* pe, int width, int height, QuantMode qm);
+void zigzag_block(Block_int* in, Chunk* out);
+void in_zigzag_block(Chunk* in, Block_int* out);
 
 
 

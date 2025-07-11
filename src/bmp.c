@@ -4,7 +4,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
+
+bool read_bmp_header(FILE* fp, BMPHeader* header, BMPInfoHeader* info_header) {
+    size_t f1 = fread(header, sizeof(header), 1, fp);
+
+    size_t f2 = fread(info_header, sizeof(info_header), 1, fp);
+   
+    if (f1 != 1 || f2 != 1) {
+        fprintf(stderr, "Reading bmp header error!\n");
+        return 0;
+    }
+
+    if (header->bfType != 0x424D) {
+        fprintf(stderr, "Invalid BMP format!\n");
+        return 0;
+    }
+
+    return 1;
+}
 
 
 RGBImage* read_bmp_file(FILE* fp, int* width, int* height) {
