@@ -21,76 +21,28 @@ CONTENT:
 */
 
 #include "block.h"
+#include "pixelrw.h"
 #include <stdint.h>
 
+typedef struct {
+    char title[8];
+    uint32_t width;
+    uint32_t height;
+} AWIHeader;
 
 typedef struct {
-    void* context; // caller defined context (can be file pointer or whatever)
-    int width;
-    int height;
-    
-    // if success true, it fail false
-    
-    // optional, run before reading blocks (maybe read headers)
-    bool (*begin)(PixelInput* self);
+    FILE* fp;
+} AWIOutputContext;
 
-    // read 16x16 block
-    bool (*read_block)(PixelInput* self, int bx, int by, RGBBlock16* rgb_out);
+typedef struct {
+    FILE* fp;
+} AWIInputContext;
 
-    // optional, run after reading blocks
-    bool (*end)(PixelInput* self);
-} PixelInput;
+void init_awi_bits_output(BitsOutput* bo, AWIOutputContext *ctx);
+void init_awi_bits_input(BitsInput* bi, AWIInputContext* ctx);
 
-// for writing pixel data (BMP file, RGB pixel buffers, ..)
-typedef struct PixelOutput {
-    void* context; // caller defined context (can be file pointer or whatever)
-    int width;
-    int height;
 
-    // if success true, it fail false
-
-    // optional, run before writing blocks
-    bool (*begin)(struct PixelOutput* self);
-
-    // write 16x16 block
-    // width height for entire image size
-    bool (*write_block)(struct PixelOutput* self, int bx, int by, RGBBlock16* block);
-    
-    // optional, run after writing blocks
-    bool (*end)(struct PixelOutput* self);
-
-} PixelOutput;
-
-typedef struct BitsInput {
-    void* context; // caller defined context (can be file pointer or whatever)
-    int units_length;
-    
-    // if success true, it fail false
-    
-    // optional, run before reading bits (maybe read headers)
-    bool (*begin)(struct BitsInput* self);
-
-    // read bits chunk
-    bool (*read_bits)(struct BitsInput* self, uint32_t* bits, int bit_size);
-
-    // optional, run after reading bits
-    bool (*end)(struct BitsInput* self);
-} BitsInput;
-
-// for writing bits chunks (.AWI file encoded datas)
-typedef struct BitsOutput {
-    void* context; // caller defined context (can be file pointer or whatever)
-    int units_length;
-
-    // optional, run before writing bits
-    bool (*begin)(struct BitsOutput* self);
-
-    // write bits chunk
-    bool (*write_bits)(struct BitsOutput* self, uint32_t bits, int bit_size);
-
-    // optional, run after writing bits
-    bool (*end)(struct BitsOutput* self);
-
-} BitsOutput;
+bool compress_to_awi(PixelInput* pi, BitsOutput* bo);
+bool decompress_awi(BitsInput* bi, PixelOutput* po);
 
 #endif

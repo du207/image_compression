@@ -37,4 +37,9 @@ typedef struct {
     Block_u8 cr;
 } YCbCrBlock_sampled;
 
-#endif __BLOCK_H__
+
+typedef struct {
+    int c[64];
+} Chunk;
+
+#endif

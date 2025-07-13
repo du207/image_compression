@@ -9,7 +9,11 @@ OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
 TARGET=image_compression
 
 ifdef DEBUG
-	CFLAGS += -Wall -Wextra
+	CFLAGS += -Wall -Wextra -g
+endif
+
+ifdef RELEASE
+	CLFAGS += -O2
 endif
 
 all: $(BUILD_DIR)/$(TARGET)

@@ -3,3 +3,6 @@ build
 *.awi
 BUG_*
 __TODO_*
+test/
+valgrind*
+callgrind*

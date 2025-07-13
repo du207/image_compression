@@ -1,73 +1,40 @@
 #include "rle.h"
 
-#include <stdio.h>
+#include "bitrw.h"
 #include <stdlib.h>
-#include <assert.h>
-#include "dct.h"
-#include "utils.h"
 
-#define BIT4_SIZE 16
 
-RLEEntry create_rle_entry(uint8_t run_length, uint8_t size, int value) {
-    assert(run_length < BIT4_SIZE && size < BIT4_SIZE);
-
-    RLEEntry e = {
-        .run_length = run_length,
-        .size = size,
-        .value = value
-    };
-
-    return e;
+static bool write_rle_dc(BitsOutput* bo, uint32_t diff) {
+    if (!bits_output_write(bo, diff, 12)) {
+        fprintf(stderr, "Writing DC diff error!\n");
+        return false;
+    }
+    return true;
 }
 
-RLEEncoder* create_rle_encoder() {
-    RLEEncoder* re = (RLEEncoder*) malloc(sizeof(RLEEncoder));
-    re->units_length = 0;
-    re->units_capacity = RLE_INITIAL_CAPACITY;
-    re->units = (RLEUnit*) malloc(sizeof(RLEUnit) * RLE_INITIAL_CAPACITY);
-    return re;
-}
+static bool write_rle_ac(BitsOutput* bo, RLEEntry* entry) {
+    uint8_t unit_symbol = (entry->run_length << 4) + entry->size;
 
-void destroy_rle_encoder(RLEEncoder* re) {
-    if (re == NULL) return;
+    bool w1 = bits_output_write(bo, unit_symbol, 8);
+    bool w2 = bits_output_write(bo, entry->value, entry->size);
 
-    free_safe(re->units);
-    free(re);
-}
-
-void add_rle_unit(RLEEncoder* re, RLEUnit ru) {
-    if (re->units_length >= re->units_capacity) {
-        size_t new_capacity = re->units_capacity * 2;
-        if (new_capacity == 0) new_capacity = RLE_INITIAL_CAPACITY;
-
-        RLEUnit* tmp = (RLEUnit*) realloc(re->units, sizeof(RLEUnit) * new_capacity);
-        if (tmp == NULL) {
-            fprintf(stderr, "Memory reallocation error!\n");
-            return;
-        }
-
-        re->units = tmp;
-        re->units_capacity = new_capacity;
+    if (!w1 || !w2) {
+        fprintf(stderr, "Writing AC entry error!\n");
+        return false;
     }
 
-    re->units[re->units_length] = ru;
-    re->units_length++;
+    return true;
 }
 
+static bool write_rle_eob(BitsOutput* bo) {
+    bool w1 = bits_output_write(bo, 0, 8);
 
+   if (!w1) {
+       fprintf(stderr, "Writing EOB error!\n");
+       return false;
+   }
 
-RLEEncoder* rle_encode(PreEncoding* pe) {
-    RLEEncoder* re = create_rle_encoder();
-    int chunks_count = pe->c_height * pe->c_width;
-    Chunk* chunks = pe->chunks;
-    int prev_dc = 0;
-
-    for (int i = 0; i < chunks_count; i++) {
-        rle_encode_chunk(re, chunks[i], prev_dc);
-        prev_dc = chunks[i].c[0];
-    }
-
-    return re;
+    return true;
 }
 
 // get bit size of abs(a)
@@ -82,112 +49,122 @@ static int get_bit_size(int a) {
     return count;
 }
 
-void rle_encode_chunk(RLEEncoder* re, Chunk c, int prev_dc) {
-    int dc = c.c[0];
+bool rle_encode_chunk_and_write(BitsOutput* bo, const Chunk* cnk, int prev_dc) {
+    int dc = cnk->c[0];
     int diff = dc - prev_dc;
+    uint32_t diff_raw = diff >= 0 ? diff : 4095 + diff; // 2^12 - 1 + diff
 
-    RLEUnit rle_dc = {
-        .type = RLE_DC,
-        .diff = diff >= 0 ? diff : 4095 + diff // 2^12 - 1 + diff
-    };
+    if (!write_rle_dc(bo, diff_raw)) return false;
 
-    add_rle_unit(re, rle_dc);
-
-    int ac, zero_c = 0, ac_val, ac_size;
+    int zero_c = 0;
     int l_i = 63;
 
-    while (l_i > 0) {
-        if (c.c[l_i] != 0) break;
+    while (l_i > 0) { // find last non-zero
+        if (cnk->c[l_i] != 0) break;
         l_i--;
     }
 
     for (int i = 1; i <= l_i; i++) {
-        ac = c.c[i];
+        int ac = cnk->c[i];
 
         if (ac == 0) {
             if (zero_c < 15) {
                 zero_c++;
             } else { // (15, 0) symbol
-                add_rle_unit(re, (RLEUnit) {
-                    .type = RLE_AC,
-                    .entry = create_rle_entry(15, 0, 0)
-                });
+                RLEEntry entry = {
+                    .run_length = 15,
+                    .size = 0,
+                    .value = 0
+                };
+
+                if (!write_rle_ac(bo, &entry)) return false;
+
                 zero_c = 0;
             }
         } else {
-            ac_size = get_bit_size(ac);
+            int ac_val, ac_size = get_bit_size(ac);
+
             if (ac > 0) {
                 ac_val = ac;
             } else {
                 ac_val = (1 << ac_size) - 1 + ac;
             }
 
-            add_rle_unit(re, (RLEUnit) {
-                .type = RLE_AC,
-                .entry = create_rle_entry(zero_c, ac_size, ac_val)
-            });
+            RLEEntry entry = {
+                .run_length = zero_c,
+                .size = ac_size,
+                .value = ac_val
+            };
+
+
+            if (!write_rle_ac(bo, &entry)) return false;
+
             zero_c = 0;
         }
     }
 
-    add_rle_unit(re, (RLEUnit) {
-        .type = RLE_EOB
-    });
+    if (!write_rle_eob(bo)) return false;
+    if (!bits_output_flush(bo)) return false;
+
+    return true;
 }
 
 
+bool read_and_rle_decode_chunk(BitsInput* bi, Chunk* cnk, int prev_dc) {
+    int cc_idx = 0;
 
-PreEncoding* rle_decode(RLEEncoder* re, int width, int height) {
-    int c_width = (width + 7) / 8; // ceil
-    int c_height = (height + 7) / 8;
+    // DC
+    uint32_t dc_diff_raw;
+    if (!bits_input_read(bi, 12, &dc_diff_raw)) {
+        fprintf(stderr, "DC Reading error!\n");
+        return false;
+    }
 
-    PreEncoding* pe = create_pre_encoding(c_width, c_height);
+    int dc_diff = dc_diff_raw > 2047
+                    ? dc_diff_raw - 4095
+                    : dc_diff_raw;
 
-    int rle_unit_count = re->units_length;
-    RLEUnit* units = re->units;
-    RLEUnit unit;
-    Chunk* chunks = pe->chunks;
+    int dc = dc_diff + prev_dc;
+    cnk->c[cc_idx++] = dc; // cnk->c[0] = dc
 
-    int i, j;
-    int chunk_idx = 0, cc_idx = 0;
-    int diff, prev_dc = 0, dc;
-    uint32_t val; uint8_t size;
+    uint8_t run_length, size;
+    uint32_t symbol, value;
 
-    for (i = 0; i < rle_unit_count; i++) {
-        unit = units[i];
+    // AC
+    while (1) {
+        if (!bits_input_read(bi, 8, &symbol)) {
+            fprintf(stderr, "AC: %d Reading symbol error!\n", cc_idx);
+            return false;
+        }
+        run_length = (symbol >> 4) & 0b1111;
+        size = symbol & 0b1111;
 
-        if (unit.type == RLE_DC) {
-            diff = unit.diff > 2047
-                ? unit.diff - 4095
-                : unit.diff;
+        if (symbol == 0) break; // EOB
 
-            dc = diff + prev_dc;
-            chunks[chunk_idx].c[cc_idx++] = dc;
-            prev_dc = dc;
-        } else if (unit.type == RLE_AC) {
-            for (j = 0; j < unit.entry.run_length; j++) {
-                chunks[chunk_idx].c[cc_idx++] = 0;
-            }
+        if (!bits_input_read(bi, size, &value)) {
+            fprintf(stderr, "AC: %d Reading value error!\n", cc_idx);
+            return false;
+        }
 
-            val = unit.entry.value;
-            size = unit.entry.size;
+        for (int i = 0; i < run_length; i++) {
+            cnk->c[cc_idx++] = 0;
+        }
 
-            if (size > 0) {
-                chunks[chunk_idx].c[cc_idx++] = val & (1 << (size - 1))
-                    ? val                     // MSB == 1: positive num
-                    : val - (1 << size) + 1;  // MSB == 0: negative num
-            } else { // (15, 0) val=0 symbol
-                chunks[chunk_idx].c[cc_idx++] = 0;
-            }
-        } else { // EOB
-            for (j = cc_idx; j < 64; j++) {
-                chunks[chunk_idx].c[j] = 0;
-            }
-
-            chunk_idx++;
-            cc_idx = 0;
+        if (size > 0) {
+            cnk->c[cc_idx++] = value & (1 << (size - 1))
+                ? value                     // MSB == 1: positive num
+                : value - (1 << size) + 1;  // MSB == 0: negative num
+        } else { // size = 0
+            cnk->c[cc_idx++] = 0;
         }
     }
 
-    return pe;
+    // EOB
+    for (int i = cc_idx; i < 64; i++) {
+        cnk->c[i] = 0;
+    }
+
+    bits_input_align_to_byte(bi);
+
+    return true;
 }

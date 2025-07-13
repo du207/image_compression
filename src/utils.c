@@ -39,3 +39,38 @@ char* replace_str_end(const char* str, const char* end) {
 
     return out;
 }
+
+
+void print_chunk(const char* title, const int* data) {
+    printf("--- %s ---\n", title);
+    for (int i = 0; i < 64; i++) {
+        printf("%d ", data[i]);
+        if ((i + 1) % 8 == 0) {
+            printf("\n");
+        }
+    }
+    printf("\n");
+}
+
+
+void print_chunk_u8(const char* title, const uint8_t* data) {
+    printf("--- %s ---\n", title);
+    for (int i = 0; i < 64; i++) {
+        printf("%u ", data[i]);
+        if ((i + 1) % 8 == 0) {
+            printf("\n");
+        }
+    }
+    printf("\n");
+}
+
+void print_block_u8(const char* title, const Block_u8* block) {
+    printf("--- %s ---\n", title);
+    for (int y = 0; y < 8; y++) {
+        for (int x = 0; x < 8; x++) {
+            printf("%d ", block->b[y][x]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
