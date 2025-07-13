@@ -13,7 +13,7 @@ ifdef DEBUG
 endif
 
 ifdef RELEASE
-	CLFAGS += -O2
+	CFLAGS += -O3 -march=native
 endif
 
 all: $(BUILD_DIR)/$(TARGET)
